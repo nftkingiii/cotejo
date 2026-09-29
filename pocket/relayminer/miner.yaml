@@ -9,6 +9,12 @@ pocket_node:
 keys:
   keys_file: "/keys/supplier-keys.yaml"
 block_time_seconds: ${BLOCK_TIME_SECONDS}
+# v0.1.0 sizes the master pool from GOMAXPROCS but the cache-refresh subpool
+# from runtime.NumCPU() (host CPUs: 48 on Railway), so auto-sizing panics with
+# "maxConcurrency cannot be greater than the parent pool's". Pin the master
+# pool above NumCPU*8*0.15 to keep the subpool inside it.
+worker_pools:
+  master_pool_size: 64
 metrics:
   enabled: true
   addr: "0.0.0.0:9092"
