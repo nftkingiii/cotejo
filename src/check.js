@@ -37,14 +37,20 @@ function describe(page, quote) {
 
 const found = (m) => m && (m.kind === 'exact' || m.kind === 'near');
 
-// The Wayback availability API is often slow; give archive calls more time.
-const ARCHIVE_DEADLINE_MS = 20_000;
+// Pocket relays and gateways give up at 30 s, so one item must finish inside
+// BUDGET_MS. The live fetch gets up to 10 s; archive calls share what is left.
+const BUDGET_MS = 25_000;
+const LIVE_MS = 10_000;
+const MIN_CALL_MS = 1_500;
 
-async function lookupArchive(url, citedAt, fetcher) {
+const remaining = (deadline) => deadline - Date.now();
+
+async function lookupArchive(url, citedAt, fetcher, deadline) {
   const q = new URL('https://archive.org/wayback/available');
   q.searchParams.set('url', url);
   if (citedAt) q.searchParams.set('timestamp', citedAt.replaceAll('-', ''));
-  const res = await fetcher(q.href, { deadlineMs: ARCHIVE_DEADLINE_MS });
+  if (remaining(deadline) < MIN_CALL_MS) return { available: null, reason: 'out_of_time' };
+  const res = await fetcher(q.href, { deadlineMs: remaining(deadline) });
   if (!res.ok || res.status !== 200) return { available: null, reason: res.reason ?? `http_${res.status}` };
   let snap;
   try { snap = JSON.parse(res.body.toString('utf8'))?.archived_snapshots?.closest; } catch { snap = null; }
@@ -57,9 +63,10 @@ async function lookupArchive(url, citedAt, fetcher) {
   };
 }
 
-export async function checkItem(item, { fetcher = fetchPage, archive = 'auto' } = {}) {
+export async function checkItem(item, { fetcher = fetchPage, archive = 'auto', budgetMs = BUDGET_MS } = {}) {
   const { url, quote = null, cited_at: citedAt = null } = item;
-  const livePage = await fetcher(url);
+  const deadline = Date.now() + budgetMs;
+  const livePage = await fetcher(url, { deadlineMs: Math.min(LIVE_MS, budgetMs) });
 
   if (!livePage.ok && INPUT_REJECTIONS.has(livePage.reason)) {
     return { url, quote, verdict: 'rejected', reason: livePage.reason, archive_status: 'skipped', live: null, archive: null };
@@ -71,9 +78,12 @@ export async function checkItem(item, { fetcher = fetchPage, archive = 'auto' } 
 
   let arch = null;
   if (needArchive) {
-    arch = await lookupArchive(url, citedAt, fetcher);
-    if (arch.available && quote) {
-      const snap = await fetcher(arch.raw_url, { deadlineMs: ARCHIVE_DEADLINE_MS });
+    arch = await lookupArchive(url, citedAt, fetcher, deadline);
+    if (arch.available && quote && remaining(deadline) < MIN_CALL_MS) {
+      arch.match = null;
+      arch.reason = 'out_of_time';
+    } else if (arch.available && quote) {
+      const snap = await fetcher(arch.raw_url, { deadlineMs: remaining(deadline) });
       const d = describe(snap, quote);
       arch.http_status = d.http_status ?? null;
       arch.sha256 = d.sha256 ?? null;
@@ -94,10 +104,11 @@ export async function checkItem(item, { fetcher = fetchPage, archive = 'auto' } 
   } else if (live.reachable) {
     verdict = live.match?.kind === 'partial' ? 'weak' : 'not_found';
   } else {
-    verdict = arch?.available ? 'dead_unverified' : 'dead';
+    verdict = arch?.match ? 'dead_unverified' : 'dead';
   }
 
-  const archiveStatus = !needArchive ? 'skipped' : arch.available === null ? 'unavailable' : arch.available ? 'checked' : 'none';
+  const uncompared = arch?.available && quote && !arch.match;
+  const archiveStatus = !needArchive ? 'skipped' : arch.available === null || uncompared ? 'unavailable' : arch.available ? 'checked' : 'none';
   return { url, quote, verdict, archive_status: archiveStatus, live, archive: arch };
 }
 

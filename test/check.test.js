@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { fetchPage, isPublicAddress } from '../src/fetch.js';
 import { createServer } from '../src/server.js';
+import { checkItem } from '../src/check.js';
 
 // A loopback fixture plays both the live web and the Wayback Machine.
 const PAGES = {
@@ -15,11 +16,14 @@ const ARCHIVE = {
   '/gone': '<html><body><p>Our 2025 target is net zero across all sites.</p></body></html>',
 };
 
-let fixture, api, fixtureBase, apiBase;
+let fixture, api, fixtureBase, apiBase, testFetcher;
 
 before(async () => {
   fixture = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
+    if (u.pathname === '/wayback/available' && u.searchParams.get('url').endsWith('/slowarch')) {
+      return setTimeout(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); }, 3000);
+    }
     if (u.pathname === '/wayback/available') {
       const target = new URL(u.searchParams.get('url')).pathname;
       const closest = ARCHIVE[target] ? { available: true, timestamp: '20250101000000', url: 'x', status: '200' } : undefined;
@@ -47,6 +51,7 @@ before(async () => {
       .replace('https://web.archive.org/web/', `${fixtureBase}/web/`);
     return fetchPage(rewritten, { ...opts, allowAddress: (ip) => ip === '127.0.0.1' || isPublicAddress(ip), ports: [port] });
   };
+  testFetcher = fetcher;
   api = createServer({ fetcher });
   await new Promise((r) => api.listen(0, '127.0.0.1', r));
   apiBase = `http://127.0.0.1:${api.address().port}`;
@@ -111,4 +116,10 @@ test('match endpoint is a pure deterministic probe', async () => {
   const b = await post('/v1/match', body);
   assert.equal(a.json.match.kind, 'exact');
   assert.deepEqual(a.json, b.json);
+});
+
+test('an archive lookup that overruns the time budget is reported as unavailable, not as absent', async () => {
+  const r = await checkItem({ url: `${fixtureBase}/slowarch`, quote: 'anything at all here' }, { fetcher: testFetcher, budgetMs: 2500 });
+  assert.equal(r.verdict, 'dead');
+  assert.equal(r.archive_status, 'unavailable');
 });
