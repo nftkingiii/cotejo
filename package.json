@@ -1,0 +1,15 @@
+{
+  "name": "cotejo",
+  "version": "0.1.0",
+  "description": "Citation integrity checks for AI agents, served on Pocket Network: is the page alive, is the quote on it, did an archived copy say it.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

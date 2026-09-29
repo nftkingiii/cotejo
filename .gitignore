@@ -1,0 +1,19 @@
+node_modules/
+.env
+.env.*
+*.log
+
+# Keys and on-chain operator material never enter the repo
+keys/
+*supplier-keys*.yaml
+*.key
+*.pem
+keyring*/
+
+# Local-only hack operations
+PROJECT_STATE.md
+HACK_EVENT_GATE.json
+SOURCES.md
+demo-day.ics
+receipts/
+scratch/
