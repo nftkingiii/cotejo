@@ -1,0 +1,36 @@
+{
+ "schema": "pocket-service-card/v1",
+ "description": "Cotejo citation check for agents. POST /v1/check {items:[{url, quote?, cited_at?}]} (1-10 items). Per item: is the page alive, is the quote on it (exact/near/partial, token-normalised, excerpt), and if not, did the Wayback Machine copy closest to cited_at contain it. Verdicts: supported, weak, not_found, drifted, dead_archived, dead_unverified, dead, alive, unchecked, rejected; each with http status, final URL, SHA-256 of fetched bytes and archive_status. No LLM; results reflect the live web at call time. POST /v1/match {text, quote} is a pure deterministic match. GET /v1/verdicts explains every label. Every response is a JSON object.",
+ "updated": "2026-09-29",
+ "rpc_types": [
+  {
+   "type": "REST",
+   "intent": "expected",
+   "backend_hint": "cotejo Node HTTP server on :8080; POST /v1/check, POST /v1/match, GET /v1/health, GET /v1/version.",
+   "notes": "Inputs in the POST body only. Bad input is JSON 400; an unreachable cited page is a result (verdict dead), never a 5xx."
+  }
+ ],
+ "apis": ["citation-check-api"],
+ "specs": [
+  {
+   "kind": "docs",
+   "api": "citation-check-api",
+   "url": "https://github.com/nftkingiii/cotejo#api",
+   "notes": "Request and response shapes with examples."
+  }
+ ],
+ "docs": "https://github.com/nftkingiii/cotejo",
+ "access": "public",
+ "results": "variable",
+ "serving": {
+  "backend": "cotejo (Node 22+, no dependencies) container behind an HA RelayMiner rest backend. Fetches only public http(s) addresses on ports 80/443; every DNS answer and redirect is checked against private, loopback, link-local and metadata ranges.",
+  "implementations": ["cotejo >= 0.1.0"],
+  "min_disk_gb": 1,
+  "min_ram_gb": 1,
+  "healthcheck": [
+   {"rpc_type": "REST", "request": {"path": "/v1/version", "method": "GET"}, "expect": {"json_path": "$.service", "matches": "^citation-check$"}, "notes": "Identity probe."},
+   {"rpc_type": "REST", "request": {"path": "/v1/health", "method": "GET"}, "expect": {"json_path": "$.status", "matches": "^ok$"}, "notes": "Readiness probe."},
+   {"rpc_type": "REST", "request": {"path": "/v1/match", "method": "POST", "body": {"text": "Pocket Network relays paid API calls.", "quote": "relays paid API calls"}}, "expect": {"json_path": "$.match.kind", "matches": "^exact$"}, "notes": "Functional probe, no network access needed."}
+  ]
+ }
+}
