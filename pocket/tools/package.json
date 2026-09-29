@@ -1,0 +1,15 @@
+{
+  "name": "cotejo-pocket-tools",
+  "private": true,
+  "type": "module",
+  "description": "Owner-side helpers for the citation-check service on Pocket Network, without Docker or pocketd.",
+  "scripts": {
+    "update-card": "node update-card.mjs"
+  },
+  "dependencies": {
+    "@cosmjs/proto-signing": "^0.39.0",
+    "@cosmjs/stargate": "^0.39.0",
+    "cosmjs-types": "^0.11.0",
+    "@cosmjs/crypto": "^0.39.0"
+  }
+}
