@@ -3,8 +3,9 @@
 // with the owner mnemonic, typed into a hidden prompt; the mnemonic is never
 // printed, stored, or sent anywhere except into the local signer.
 //
-//   node update-card.mjs            show what would change, then ask to sign
-//   node update-card.mjs --dry-run  show what would change and stop
+//   node update-card.mjs                     sign with the owner mnemonic (hidden prompt)
+//   node update-card.mjs --key-env NAME      sign with a 64-hex private key held in env var NAME
+//   node update-card.mjs --dry-run           show what would change and stop
 //
 // Options: --service <id> (default citation-check), --card <path>, --network beta|main
 
@@ -13,7 +14,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { DirectSecp256k1HdWallet, Registry } from '@cosmjs/proto-signing';
+import { DirectSecp256k1HdWallet, DirectSecp256k1Wallet, Registry } from '@cosmjs/proto-signing';
 import { SigningStargateClient, GasPrice, defaultRegistryTypes } from '@cosmjs/stargate';
 import { stringToPath } from '@cosmjs/crypto';
 import { BinaryWriter, BinaryReader } from 'cosmjs-types/binary';
@@ -73,6 +74,7 @@ function args() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return {
     dryRun: a.includes('--dry-run'),
+    keyEnv: get('--key-env', null),
     service: get('--service', 'citation-check'),
     card: path.resolve(get('--card', path.join(here, '..', 'card.json'))),
     network: get('--network', 'beta'),
@@ -124,14 +126,25 @@ async function main() {
   console.log('Name and price are kept as they are; only the card changes.');
   if (o.dryRun) { console.log('\n--dry-run: stopping before signing.'); return; }
 
-  const mnemonic = (await askHidden('\nOwner mnemonic (input hidden): ')).trim().replace(/\s+/g, ' ');
   let wallet = null;
-  for (const p of HD_PATHS) {
-    const w = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: 'pokt', hdPaths: [stringToPath(p)] });
+  if (o.keyEnv) {
+    const hex = String(process.env[o.keyEnv] ?? '').trim().replace(/^0x/, '');
+    delete process.env[o.keyEnv];
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error(`env var ${o.keyEnv} does not hold a 64-character hex key; nothing was signed`);
+    const w = await DirectSecp256k1Wallet.fromKey(Uint8Array.from(Buffer.from(hex, 'hex')), 'pokt');
     const [acct] = await w.getAccounts();
-    if (acct.address === cur.owner_address) { wallet = w; console.log(`key matches the owner (derivation ${p})`); break; }
+    if (acct.address !== cur.owner_address) throw new Error('that key is not the owner key; nothing was signed');
+    wallet = w;
+    console.log('key matches the owner');
+  } else {
+    const mnemonic = (await askHidden('\nOwner mnemonic (input hidden): ')).trim().replace(/\s+/g, ' ');
+    for (const p of HD_PATHS) {
+      const w = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: 'pokt', hdPaths: [stringToPath(p)] });
+      const [acct] = await w.getAccounts();
+      if (acct.address === cur.owner_address) { wallet = w; console.log(`key matches the owner (derivation ${p})`); break; }
+    }
+    if (!wallet) throw new Error('that mnemonic does not derive the owner address; nothing was signed');
   }
-  if (!wallet) throw new Error('that mnemonic does not derive the owner address; nothing was signed');
 
   if ((await ask(`Type yes to update the card of ${cur.id} on ${o.network}: `)) !== 'yes') { console.log('Cancelled; nothing was signed.'); return; }
 
