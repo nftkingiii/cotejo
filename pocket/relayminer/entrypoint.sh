@@ -14,6 +14,9 @@ export BLOCK_TIME_SECONDS="${BLOCK_TIME_SECONDS:-30}"
 export BACKEND_URL="${BACKEND_URL:-http://cotejo.railway.internal:8080}"
 
 case "$ROLE" in relayer|miner) ;; *) echo "ROLE must be relayer or miner" >&2; exit 64;; esac
+# Tolerate whitespace, CRLF and a 0x prefix from pasting or piping.
+SUPPLIER_OPERATOR_KEY_HEX=$(printf %s "$SUPPLIER_OPERATOR_KEY_HEX" | tr -d '[:space:]')
+SUPPLIER_OPERATOR_KEY_HEX=${SUPPLIER_OPERATOR_KEY_HEX#0x}
 case "$SUPPLIER_OPERATOR_KEY_HEX" in
   *[!0-9a-fA-F]*) echo "SUPPLIER_OPERATOR_KEY_HEX must be hex" >&2; exit 64;;
 esac

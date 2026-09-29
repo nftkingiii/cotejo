@@ -1,0 +1,6 @@
+network: beta
+listeners:
+  - addr: 127.0.0.1:8550
+    service_id: citation-check
+    rpc_type: rest
+apps: []

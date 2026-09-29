@@ -17,3 +17,6 @@ SOURCES.md
 demo-day.ics
 receipts/
 scratch/
+
+# Generated stake configs (public addresses only, but local)
+pocket/beta/local/
