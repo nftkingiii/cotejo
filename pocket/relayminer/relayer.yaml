@@ -1,0 +1,36 @@
+# Cotejo relayer on Railway, Beta TestNet. ${...} values are filled by entrypoint.sh.
+listen_addr: "0.0.0.0:8080"
+redis:
+  url: "${REDIS_URL}"
+pocket_node:
+  query_node_rpc_url: "${POCKET_RPC_URL}"
+  query_node_grpc_url: "${POCKET_GRPC_URL}"
+  grpc_insecure: false
+keys:
+  keys_file: "/keys/supplier-keys.yaml"
+services:
+  citation-check:
+    validation_mode: eager
+    timeout_profile: fast
+    max_body_size_bytes: 1048576
+    default_backend: rest
+    backends:
+      rest:
+        url: "${BACKEND_URL}"
+        health_check:
+          enabled: true
+          endpoint: "/v1/health"
+          expected_body: '"ok"'
+          interval_seconds: 10
+          timeout_seconds: 5
+          unhealthy_threshold: 3
+          healthy_threshold: 2
+health_check:
+  enabled: true
+  addr: "0.0.0.0:8081"
+metrics:
+  enabled: true
+  addr: "0.0.0.0:9090"
+logging:
+  level: "info"
+  format: "json"

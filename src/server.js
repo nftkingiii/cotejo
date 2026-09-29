@@ -101,5 +101,5 @@ export function createServer({ fetcher = fetchPage } = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? 8080);
-  createServer().listen(port, () => console.log(JSON.stringify({ msg: 'listening', service: SERVICE_ID, version: VERSION, port })));
+  createServer().listen(port, '::', () => console.log(JSON.stringify({ msg: 'listening', service: SERVICE_ID, version: VERSION, port })));
 }

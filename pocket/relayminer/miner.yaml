@@ -1,0 +1,17 @@
+# Cotejo miner on Railway, Beta TestNet. ${...} values are filled by entrypoint.sh.
+redis:
+  url: "${REDIS_URL}"
+pocket_node:
+  query_node_rpc_url: "${POCKET_RPC_URL}"
+  query_node_grpc_url: "${POCKET_GRPC_URL}"
+  chain_id: "${POCKET_CHAIN_ID}"
+  grpc_insecure: false
+keys:
+  keys_file: "/keys/supplier-keys.yaml"
+block_time_seconds: ${BLOCK_TIME_SECONDS}
+metrics:
+  enabled: true
+  addr: "0.0.0.0:9092"
+logging:
+  level: "info"
+  format: "json"
