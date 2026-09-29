@@ -13,10 +13,10 @@
  "apis": ["citation-check-api"],
  "specs": [
   {
-   "kind": "docs",
+   "kind": "openapi",
    "api": "citation-check-api",
-   "url": "https://github.com/nftkingiii/cotejo#api",
-   "notes": "Request and response shapes with examples."
+   "url": "https://raw.githubusercontent.com/nftkingiii/cotejo/main/pocket/openapi.json",
+   "notes": "OpenAPI 3.0.3 contract; also served at GET /openapi.json."
   }
  ],
  "docs": "https://github.com/nftkingiii/cotejo",

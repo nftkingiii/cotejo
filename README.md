@@ -6,7 +6,47 @@ An agent that cites a web page is making three claims: the page exists, it says 
 
 - No LLM. Matching is token-normalised text comparison, so the same page and quote always give the same answer.
 - Every fetched page is fingerprinted (SHA-256), so a verdict can be tied to exact bytes.
-- Service ID on Pocket: `citation-check` (Beta TestNet, pending registration).
+- Service ID on Pocket: `citation-check` on Beta TestNet, relayed at `https://cotejo.up.railway.app`.
+
+## Try it
+
+### 1. Public demo (one command, no wallet)
+
+A separate deployment of the same code, rate limited to 10 checks per hour per IP, 3 URLs per check and 300 checks per day in total. It exists so anyone can see the output; paid use goes through Pocket.
+
+```bash
+curl -s https://cotejo-demo.up.railway.app/v1/check \
+  -d '{"items":[{"url":"https://example.com","quote":"This domain is for use in illustrative examples in documents","cited_at":"2023-01-01"}]}'
+```
+
+example.com has since reworded that sentence, so the answer is `drifted`: the live page scores a partial match, and the Wayback copy from January 2023 matches exactly. Drop `cited_at` or change the quote to see `supported`, `weak` or `not_found`; point it at a missing page for `dead` or `dead_archived`.
+
+PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri https://cotejo-demo.up.railway.app/v1/check -Body '{"items":[{"url":"https://example.com","quote":"This domain is for use in illustrative examples in documents","cited_at":"2023-01-01"}]}' | ConvertTo-Json -Depth 8
+```
+
+### 2. Paid relay through Pocket Network (Beta TestNet)
+
+Relays are signed by a staked application and settle on-chain. You need Docker and a Beta TestNet key.
+
+```bash
+docker run --rm -v pocket-keys:/home/pocket/.pocket ghcr.io/pokt-network/pocketd:0.1.35 keys add app --keyring-backend test
+# fund the printed address at https://faucet.beta.pocket.network/ (100,000 test POKT per claim)
+printf 'stake_amount: 5000000000upokt\nservice_ids:\n  - citation-check\n' > app_stake.yaml
+docker run --rm -v pocket-keys:/home/pocket/.pocket -v "$PWD:/work" -w /work ghcr.io/pokt-network/pocketd:0.1.35 \
+  tx application stake-application --config ./app_stake.yaml --from app --keyring-backend test \
+  --network=beta --gas auto --gas-prices 1upokt --gas-adjustment 1.5 -y
+# wait for the next session (about 10 minutes), then relay using pocket/beta/pocket-ap.yaml and pocket/beta/body.json:
+export POCKET_APP_PRIVATE_KEY=$(echo y | docker run --rm -i -v pocket-keys:/home/pocket/.pocket ghcr.io/pokt-network/pocketd:0.1.35 \
+  keys export app --unarmored-hex --unsafe --keyring-backend test 2>/dev/null | tail -1)
+docker run --rm -e POCKET_APP_PRIVATE_KEY -v "$PWD/pocket/beta:/work:ro" ghcr.io/pokt-network/pocket-ap:v0.1.2 \
+  call --config /work/pocket-ap.yaml --service citation-check --rpc-type rest -X POST --path /v1/check --data @/work/body.json -v
+unset POCKET_APP_PRIVATE_KEY
+```
+
+The relay diagnostics name the supplier (`pokt1ad55hvdg6ytvn6h9c8tfazyez33nq6x54t5428`) and the session. The first relay served this way was claimed in transaction `18562D18D7FF7539F17767BDFF9D63C817C311B981F1998EC42D71F64595B850` and settled at block 688553.
 
 ## API
 
@@ -76,6 +116,7 @@ Response (trimmed):
 ```bash
 npm test
 npm start            # PORT=8080 by default
+PUBLIC_DEMO=1 npm start   # rate-limited public demo mode
 docker build -t cotejo . && docker run -p 8080:8080 cotejo
 ```
 
