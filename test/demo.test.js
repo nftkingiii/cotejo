@@ -40,6 +40,18 @@ test('demo has a global daily cap across callers', async () => {
   assert.match((await r.json()).error.detail, /daily/);
 });
 
+test('X-Real-IP takes precedence, so rotating X-Forwarded-For opens no new bucket', async () => {
+  const srv = createServer({ fetcher, demo: true, limits: { perIpPerHour: 1, perDay: 100, maxItems: 3 } });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const hit = (xff) => fetch(`${base}/v1/check`, { method: 'POST', headers: { 'x-real-ip': '192.0.2.50', 'x-forwarded-for': xff },
+    body: JSON.stringify({ items: [{ url: 'https://example.org/' }] }) });
+  try {
+    assert.equal((await hit('10.0.0.1')).status, 200);
+    assert.equal((await hit('10.0.0.2')).status, 429);
+  } finally { srv.close(); }
+});
+
 test('demo caps items per check at 3', async () => {
   const r = await check(demoBase, '198.51.100.4', 4);
   assert.equal(r.status, 400);

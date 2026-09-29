@@ -39,11 +39,14 @@ function makeLimiter({ perIpPerHour, perDay }) {
   };
 }
 
-// Railway's edge appends the caller address to x-forwarded-for, so the last
-// entry is the one a client cannot forge.
+// Railway's edge sets X-Real-IP to the caller's address (documented under
+// public networking specs). Elsewhere, fall back to the last forwarded hop,
+// which a client cannot forge behind an appending proxy.
 function clientIp(req) {
+  const real = String(req.headers['x-real-ip'] ?? '').trim();
+  if (real) return real;
   const xff = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  return xff.at(-1) || String(req.headers['x-real-ip'] ?? '') || req.socket.remoteAddress || 'unknown';
+  return xff.at(-1) || req.socket.remoteAddress || 'unknown';
 }
 
 function send(res, status, obj) {
@@ -107,7 +110,7 @@ export function createServer({ fetcher = fetchPage, demo = process.env.PUBLIC_DE
           }),
           summary: 'Citation integrity for agents: is the cited page alive, is the quote actually on it, and if not, did an archived copy say it?',
           endpoints: {
-            'POST /v1/check': 'Body {items:[{url, quote?, cited_at?}], archive?: auto|always|never}. Up to 10 items.',
+            'POST /v1/check': `Body {items:[{url, quote?, cited_at?}], archive?: auto|always|never}. Up to ${maxItems} items.`,
             'POST /v1/match': 'Body {text, quote}. Pure text match, no fetching.',
             'GET /v1/verdicts': 'Meaning of each verdict.',
             'GET /openapi.json': 'OpenAPI 3 contract.',
