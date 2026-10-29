@@ -1,5 +1,5 @@
 # Relayer and miner for the citation-check supplier. One image; ROLE picks which runs.
-FROM ghcr.io/pokt-network/pocket-relay-miner:v0.1.0
+FROM ghcr.io/pokt-network/pocket-relay-miner:v0.1.6
 USER root
 RUN mkdir -p /keys /opt/cotejo && chown pocket:pocket /keys
 COPY pocket/relayminer/relayer.yaml pocket/relayminer/miner.yaml /opt/cotejo/

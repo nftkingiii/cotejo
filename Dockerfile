@@ -1,4 +1,5 @@
-FROM node:22-alpine
+# Node 24 LTS (Krypton), pinned to the 2026-10-27 release so rebuilds are reproducible.
+FROM node:24.22.2-alpine
 WORKDIR /app
 COPY package.json ./
 COPY src ./src

@@ -6,7 +6,7 @@ An agent that cites a web page is making three claims: the page exists, it says 
 
 - No LLM. Matching is token-normalised text comparison, so the same page and quote always give the same answer.
 - Every fetched page is fingerprinted (SHA-256), so a verdict can be tied to exact bytes.
-- Service ID on Pocket: `citation-check` on Beta TestNet, relayed at `https://cotejo.up.railway.app`.
+- Service ID on Pocket: `citation-check`. Registered on **mainnet** by `pokt17x658hzprsy9zuksrel852rj7xhd07330wepqj` in transaction `3663190C9AAD1880D79FCBB4A373E2EEEFCDAE4B6F4CE9CDE0FE9F3AAA01A399` (height 985706); also on Beta TestNet, relayed at `https://cotejo.up.railway.app`.
 
 ## Try it
 
@@ -119,6 +119,8 @@ npm start            # PORT=8080 by default
 PUBLIC_DEMO=1 npm start   # rate-limited public demo mode
 docker build -t cotejo . && docker run -p 8080:8080 cotejo
 ```
+
+The image runs Node 24 LTS (pinned to 24.22.2); the code also runs on Node 22 or later. The supplier image in `pocket/relayminer` uses `pocket-relay-miner` v0.1.6, which builds the weighted proofs mainnet requires since poktroll v0.1.36. Set `POCKET_NETWORK=main` for mainnet endpoints, chain id `pocket` and a 60 s block time (default `beta`).
 
 ## Safety
 

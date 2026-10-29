@@ -7,10 +7,16 @@ set -eu
 : "${ROLE:?ROLE must be relayer or miner}"
 : "${REDIS_URL:?}"
 : "${SUPPLIER_OPERATOR_KEY_HEX:?set this Railway variable to the operator key (64 hex chars)}"
-export POCKET_RPC_URL="${POCKET_RPC_URL:-https://sauron-rpc.beta.infra.pocket.network}"
-export POCKET_GRPC_URL="${POCKET_GRPC_URL:-sauron-grpc.beta.infra.pocket.network:443}"
-export POCKET_CHAIN_ID="${POCKET_CHAIN_ID:-pocket-lego-testnet}"
-export BLOCK_TIME_SECONDS="${BLOCK_TIME_SECONDS:-30}"
+# POCKET_NETWORK picks the endpoint, chain id and block time defaults; each can still be set on its own.
+case "${POCKET_NETWORK:-beta}" in
+  beta) d_rpc=https://sauron-rpc.beta.infra.pocket.network d_grpc=sauron-grpc.beta.infra.pocket.network:443 d_chain=pocket-lego-testnet d_block=30 ;;
+  main) d_rpc=https://sauron-rpc.infra.pocket.network d_grpc=sauron-grpc.infra.pocket.network:443 d_chain=pocket d_block=60 ;;
+  *) echo "POCKET_NETWORK must be beta or main" >&2; exit 64 ;;
+esac
+export POCKET_RPC_URL="${POCKET_RPC_URL:-$d_rpc}"
+export POCKET_GRPC_URL="${POCKET_GRPC_URL:-$d_grpc}"
+export POCKET_CHAIN_ID="${POCKET_CHAIN_ID:-$d_chain}"
+export BLOCK_TIME_SECONDS="${BLOCK_TIME_SECONDS:-$d_block}"
 export BACKEND_URL="${BACKEND_URL:-http://cotejo.railway.internal:8080}"
 
 case "$ROLE" in relayer|miner) ;; *) echo "ROLE must be relayer or miner" >&2; exit 64;; esac

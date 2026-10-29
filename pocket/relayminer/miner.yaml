@@ -1,4 +1,4 @@
-# Cotejo miner on Railway, Beta TestNet. ${...} values are filled by entrypoint.sh.
+# Cotejo miner. ${...} values are filled by entrypoint.sh for POCKET_NETWORK (beta or main).
 redis:
   url: "${REDIS_URL}"
 pocket_node:

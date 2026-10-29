@@ -1,4 +1,4 @@
-# Cotejo relayer on Railway, Beta TestNet. ${...} values are filled by entrypoint.sh.
+# Cotejo relayer. ${...} values are filled by entrypoint.sh for POCKET_NETWORK (beta or main).
 listen_addr: "0.0.0.0:8080"
 redis:
   url: "${REDIS_URL}"
