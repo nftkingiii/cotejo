@@ -6,8 +6,12 @@
 //   node update-card.mjs                     sign with the owner mnemonic (hidden prompt)
 //   node update-card.mjs --key-env NAME      sign with a 64-hex private key held in env var NAME
 //   node update-card.mjs --dry-run           show what would change and stop
+//   node update-card.mjs --network main --create --owner pokt1...
+//                                            register the service for the first time; the chain
+//                                            charges its add_service_fee, capped by --max-fee-pokt
 //
-// Options: --service <id> (default citation-check), --card <path>, --network beta|main
+// Options: --service <id> (default citation-check), --card <path>, --network beta|main,
+//          --name <text> and --cu <compute units per relay> (create only), --max-fee-pokt <n> (default 1000)
 
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -78,17 +82,33 @@ function args() {
     service: get('--service', 'citation-check'),
     card: path.resolve(get('--card', path.join(here, '..', 'card.json'))),
     network: get('--network', 'beta'),
+    create: a.includes('--create'),
+    owner: get('--owner', null),
+    name: get('--name', 'Cotejo Citation Check'),
+    cu: get('--cu', '50000'),
+    maxFeePokt: Number(get('--max-fee-pokt', '1000')),
   };
 }
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
-async function onChain(net, id) {
+async function onChain(net, id, { allowMissing = false } = {}) {
   const r = await fetch(`${net.rest}/pokt-network/poktroll/service/service/${encodeURIComponent(id)}`);
+  if (allowMissing && r.status === 404) return null;
   if (!r.ok) throw new Error(`service ${id} not found on this network (HTTP ${r.status})`);
   const s = (await r.json()).service;
   return { ...s, cardBytes: s.metadata?.card ? Buffer.from(s.metadata.card, 'base64') : Buffer.alloc(0) };
 }
+
+async function getJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} answered HTTP ${r.status}`);
+  return r.json();
+}
+
+const pokt = (u) => (Number(u) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 6 });
+const balanceOf = async (net, addr) =>
+  BigInt((await getJson(`${net.rest}/cosmos/bank/v1beta1/balances/${addr}/by_denom?denom=upokt`)).balance?.amount ?? '0');
 
 function askHidden(question) {
   return new Promise((resolve) => {
@@ -116,6 +136,8 @@ async function main() {
   JSON.parse(card.toString('utf8'));
   if (card.length >= CARD_LIMIT) throw new Error(`card is ${card.length} bytes; the Service Audit requires under ${CARD_LIMIT}`);
 
+  if (o.create) return create(o, net, card);
+
   const cur = await onChain(net, o.service);
   console.log(`network        ${o.network} (${net.chainId})`);
   console.log(`service        ${cur.id}  "${cur.name}"  ${cur.compute_units_per_relay} CU/relay`);
@@ -126,6 +148,17 @@ async function main() {
   console.log('Name and price are kept as they are; only the card changes.');
   if (o.dryRun) { console.log('\n--dry-run: stopping before signing.'); return; }
 
+  const wallet = await ownerWallet(o, cur.owner_address);
+
+  if ((await ask(`Type yes to update the card of ${cur.id} on ${o.network}: `)) !== 'yes') { console.log('Cancelled; nothing was signed.'); return; }
+
+  const msg = addServiceMsg(cur.owner_address, cur.id, cur.name, cur.compute_units_per_relay, card);
+  await broadcast(net, wallet, cur.owner_address, msg, 'cotejo: update service card');
+  await readBack(net, o.service, card);
+}
+
+// The key is checked against the owner address before anything is signed.
+async function ownerWallet(o, owner) {
   let wallet = null;
   if (o.keyEnv) {
     const hex = String(process.env[o.keyEnv] ?? '').trim().replace(/^0x/, '');
@@ -133,7 +166,7 @@ async function main() {
     if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error(`env var ${o.keyEnv} does not hold a 64-character hex key; nothing was signed`);
     const w = await DirectSecp256k1Wallet.fromKey(Uint8Array.from(Buffer.from(hex, 'hex')), 'pokt');
     const [acct] = await w.getAccounts();
-    if (acct.address !== cur.owner_address) throw new Error('that key is not the owner key; nothing was signed');
+    if (acct.address !== owner) throw new Error('that key is not the owner key; nothing was signed');
     wallet = w;
     console.log('key matches the owner');
   } else {
@@ -141,32 +174,71 @@ async function main() {
     for (const p of HD_PATHS) {
       const w = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: 'pokt', hdPaths: [stringToPath(p)] });
       const [acct] = await w.getAccounts();
-      if (acct.address === cur.owner_address) { wallet = w; console.log(`key matches the owner (derivation ${p})`); break; }
+      if (acct.address === owner) { wallet = w; console.log(`key matches the owner (derivation ${p})`); break; }
     }
     if (!wallet) throw new Error('that mnemonic does not derive the owner address; nothing was signed');
   }
+  return wallet;
+}
 
-  if ((await ask(`Type yes to update the card of ${cur.id} on ${o.network}: `)) !== 'yes') { console.log('Cancelled; nothing was signed.'); return; }
+function addServiceMsg(owner, id, name, cu, card) {
+  return {
+    typeUrl: TYPE_URL,
+    value: { ownerAddress: owner, service: { id, name, computeUnitsPerRelay: BigInt(cu), ownerAddress: owner, metadata: { card: new Uint8Array(card) } } },
+  };
+}
 
+async function broadcast(net, wallet, owner, msg, memo) {
   const registry = new Registry([...defaultRegistryTypes, [TYPE_URL, MsgAddService]]);
   const client = await SigningStargateClient.connectWithSigner(net.rpc, wallet, { registry, gasPrice: GasPrice.fromString('1upokt') });
   const chainId = await client.getChainId();
   if (chainId !== net.chainId) throw new Error(`connected to ${chainId}, expected ${net.chainId}`);
-  const msg = {
-    typeUrl: TYPE_URL,
-    value: {
-      ownerAddress: cur.owner_address,
-      service: { id: cur.id, name: cur.name, computeUnitsPerRelay: BigInt(cur.compute_units_per_relay), ownerAddress: cur.owner_address, metadata: { card: new Uint8Array(card) } },
-    },
-  };
-  const res = await client.signAndBroadcast(cur.owner_address, [msg], 1.5, 'cotejo: update service card');
+  const res = await client.signAndBroadcast(owner, [msg], 1.5, memo);
   console.log(`tx ${res.transactionHash}  height ${res.height}  code ${res.code}`);
   if (res.code !== 0) throw new Error(`transaction failed: ${res.rawLog ?? ''}`);
+}
 
-  const after = await onChain(net, o.service);
+async function readBack(net, id, card) {
+  const after = await onChain(net, id);
   const same = Buffer.compare(after.cardBytes, card) === 0;
+  console.log(`read-back      ${after.id}  "${after.name}"  ${after.compute_units_per_relay} CU/relay  owner ${after.owner_address}`);
   console.log(`read-back card sha256 ${sha(after.cardBytes)}  ${same ? 'matches the file byte for byte' : 'DOES NOT MATCH the file'}`);
   if (!same) process.exitCode = 1;
+  return after;
+}
+
+// First registration of a service. The chain charges add_service_fee to the owner.
+async function create(o, net, card) {
+  if (!/^pokt1[0-9a-z]{38}$/.test(o.owner ?? '')) throw new Error('--create needs --owner <pokt1... address> of the funded owner account');
+  if (!/^[A-Za-z0-9_-]{1,42}$/.test(o.service)) throw new Error('service id must be 1-42 letters, digits, - or _');
+  if (!/^[1-9][0-9]*$/.test(o.cu) || Number(o.cu) > 1048576) throw new Error('--cu must be 1 to 1048576');
+  if (await onChain(net, o.service, { allowMissing: true })) throw new Error(`service ${o.service} already exists on ${o.network}; run without --create to update its card`);
+
+  const fee = BigInt((await getJson(`${net.rest}/pokt-network/poktroll/service/params`)).params.add_service_fee.amount);
+  const bal = await balanceOf(net, o.owner);
+  const gasBuffer = 1_000_000n; // 1 POKT, well above a single tx at 1upokt gas price
+  console.log(`network        ${o.network} (${net.chainId})`);
+  console.log(`new service    ${o.service}  "${o.name}"  ${o.cu} CU/relay`);
+  console.log(`owner          ${o.owner}`);
+  console.log(`card           ${card.length} bytes  sha256 ${sha(card)}`);
+  console.log(`creation fee   ${pokt(fee)} POKT (add_service_fee, read from chain now)`);
+  console.log(`owner balance  ${pokt(bal)} POKT`);
+  if (Number(fee) / 1e6 > o.maxFeePokt) throw new Error(`on-chain fee ${pokt(fee)} POKT is above --max-fee-pokt ${o.maxFeePokt}; nothing was signed`);
+  console.log('The service id is permanent once created.');
+  if (bal < fee + gasBuffer) {
+    const msg = `owner needs at least ${pokt(fee + gasBuffer)} POKT (fee plus gas); nothing was signed`;
+    if (o.dryRun) { console.log(`\n--dry-run: ${msg}`); return; }
+    throw new Error(msg);
+  }
+  if (o.dryRun) { console.log('\n--dry-run: stopping before signing.'); return; }
+
+  const wallet = await ownerWallet(o, o.owner);
+  if ((await ask(`Type yes to create ${o.service} on ${o.network} and pay ${pokt(fee)} POKT: `)) !== 'yes') { console.log('Cancelled; nothing was signed.'); return; }
+  await broadcast(net, wallet, o.owner, addServiceMsg(o.owner, o.service, o.name, o.cu, card), 'cotejo: register service');
+  const after = await readBack(net, o.service, card);
+  const spent = bal - (await balanceOf(net, o.owner));
+  console.log(`owner spent    ${pokt(spent)} POKT`);
+  if (after.owner_address !== o.owner) { console.error('read-back owner does not match --owner'); process.exitCode = 1; }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
