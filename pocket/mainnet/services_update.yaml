@@ -1,0 +1,12 @@
+# Services-only stake update: adds citation-check to an already-staked supplier
+# without changing its stake (stake_per_additional_service is 0 on mainnet).
+# Signed by the supplier's OPERATOR. List every service the supplier should
+# serve after the update, not only the new one.
+owner_address: pokt1...        # CHANGE: your supplier's owner address
+operator_address: pokt1...     # CHANGE: your supplier's operator address
+services:
+  # CHANGE: keep your existing service entries here.
+  - service_id: citation-check
+    endpoints:
+      - publicly_exposed_url: https://relay.example.org   # CHANGE: your RelayMiner's public URL
+        rpc_type: REST

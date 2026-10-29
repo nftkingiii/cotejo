@@ -1,0 +1,60 @@
+# pocket-relay-miner v0.1.6 standalone config for citation-check on mainnet:
+# relayer and miner in one process, state in an embedded store, no Redis.
+# Based on the project's examples/docker-compose/config/standalone.yaml with
+# every "Mainnet:" value switched. Check it before starting:
+#   pocket-relay-miner standalone validate --config standalone.yaml
+
+pocket_node:
+  # Public Sauron endpoints; your own full node is the better choice for
+  # claims and proofs you are paid for.
+  query_node_rpc_url: "https://sauron-rpc.infra.pocket.network"
+  query_node_grpc_url: "sauron-grpc.infra.pocket.network:443"
+  chain_id: "pocket"
+  grpc_insecure: false
+
+keys:
+  # Your supplier operator key(s), mode 0600, owned by uid 1000.
+  keys_file: "/keys/supplier-keys.yaml"
+
+storage:
+  # Keep on local disk; new work stops below 1 GiB free.
+  path: "/home/pocket/.pocket-relay-miner/data"
+
+metrics:
+  enabled: true
+  addr: "0.0.0.0:9092"
+
+logging:
+  level: "info"
+  format: "json"
+
+relayer:
+  listen_addr: "0.0.0.0:8080"
+  services:
+    # Keep any services you already serve; this entry adds citation-check.
+    citation-check:
+      validation_mode: eager
+      timeout_profile: fast
+      # A check fetches up to 10 pages plus Wayback copies; requests are 1 MiB at most.
+      max_body_size_bytes: 1048576
+      default_backend: rest
+      backends:
+        rest:
+          # CHANGE if the Cotejo container is not reachable under this name.
+          url: "http://cotejo:8080"
+          health_check:
+            enabled: true
+            endpoint: "/v1/health"
+            method: "GET"
+            expected_body: '"ok"'
+            interval_seconds: 10
+            timeout_seconds: 5
+            unhealthy_threshold: 3
+            healthy_threshold: 2
+  health_check:
+    enabled: true
+    addr: "0.0.0.0:8081"
+
+miner:
+  # Mainnet commits a block about every 61 seconds.
+  block_time_seconds: 60
